@@ -2,7 +2,7 @@
   "name": "Bulk Unsubscriber",
   "version": "0.1.0",
   "description": "Bulk unsubscribe from Youtube",
-  "permissions": [ "tabs"],
+  "permissions": [ "tabs","storage"],
   "host_permissions": ["https://*.youtube.com/*"],
   "content_scripts": [
     {
