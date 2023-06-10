@@ -5,8 +5,8 @@ const fetchChannelsFromStorage = async () => {
     .get("channels")
     .then((val) => Object.assign(channelNames, val["channels"]));
 };
-const fetchChannelsToPopUp = (response) => {
-  fetchChannelsFromStorage();
+const fetchChannelsToPopUp = (response, fresh = false) => {
+  if (!fresh) fetchChannelsFromStorage();
 
   if (Object.keys(channelNames).length !== 0) {
     response(channelNames);
@@ -29,12 +29,38 @@ const fetchChannelsToPopUp = (response) => {
   }
   response(channelNames);
 };
+async function nukeChannels(excludedList, response) {
+  const runAfterDelay = (fn, delay) =>
+    new Promise((resolve, reject) => {
+      setTimeout(() => {
+        fn();
+        resolve();
+      }, delay);
+    });
+  const channels = Array.from(
+    document.getElementsByTagName(`ytd-channel-renderer`)
+  ).filter(
+    (e) => !excludedList.includes(e.getElementsByTagName("a")[0].href.slice(25))
+  );
+  let ctr = 0;
+  for (const channel of channels) {
+    channel.querySelector(`[aria-label^='Unsubscribe from']`).click();
+    await runAfterDelay(() => {
+      document
+        .getElementsByTagName(`yt-confirm-dialog-renderer`)[0]
+        .querySelector(`[aria-label^='Unsubscribe']`)
+        .click();
+      ctr++;
+    }, 150);
+  }
+}
 
 chrome.runtime.onMessage.addListener(async (obj, sender, response) => {
   const { type } = obj;
   if (type === "FETCH") {
-    fetchChannelsToPopUp(response);
+    fetchChannelsToPopUp(response, obj.fresh);
+  } else if (type === "NUKE") {
+    await nukeChannels(obj.vals, response);
+    response();
   }
 });
-//   }
-// });

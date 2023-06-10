@@ -1,16 +1,19 @@
-import { getActiveTabURL } from "./utils.js";
+import { getActiveTabURL, runAfterDelay } from "./utils.js";
 const activeTab = await getActiveTabURL();
 const contentBannerDivElement = document.getElementById("found-banner");
 const actionsDivElement = document.getElementById("actions");
 const nukeForm = document.getElementById("nuke-form");
 const excludeForm = document.getElementById("exclude-form");
 const selectedList = [];
+//TODO: checkup if we actually need this
+let allChannels = {};
 
-async function fetchVals() {
+async function fetchVals(fresh = false) {
   chrome.tabs.sendMessage(
     activeTab.id,
     {
       type: "FETCH",
+      fresh: fresh,
     },
     updateVals
   );
@@ -19,7 +22,23 @@ async function fetchVals() {
     .then((val) => Object.assign(selectedList, val["selectedList"]));
 }
 
+function nukeVals() {
+  console.log(
+    Object.values(allChannels).filter((n) => !selectedList.includes(n))
+  );
+  chrome.tabs.sendMessage(
+    activeTab.id,
+    {
+      type: "NUKE",
+      vals: selectedList,
+    },
+    reloadPage
+    // () => {}
+  );
+}
 function placeCheckboxes(channels) {
+  nukeForm.innerHTML = ` <form id="nuke-form">Nuke list</form>`;
+  excludeForm.innerHTML = ` <form id="exclude-form">Excluded list</form>`;
   for (let i of Object.keys(channels)) {
     if (selectedList.includes(channels[i])) {
       addCheckbox(i, channels[i], excludeForm, true);
@@ -29,6 +48,15 @@ function placeCheckboxes(channels) {
   }
 }
 
+function reloadPage() {
+  runAfterDelay(() => {
+    console.log(
+      (Object.keys(allChannels).length - selectedList.length) * 160 + 10
+    );
+    chrome.tabs.reload();
+  }, 1500 + ((Object.keys(allChannels).length - selectedList.length) * 160 + 10));
+}
+
 function updateVals(channels) {
   if (channels) {
     contentBannerDivElement.innerHTML = `Found ${
@@ -36,13 +64,14 @@ function updateVals(channels) {
     } channels
     `;
     placeCheckboxes(channels);
+    allChannels = channels;
   }
 }
 
 function addToCheckList(id) {
   selectedList.push(id);
   chrome.storage.local.set({ selectedList: selectedList });
-  var checkbox = nukeForm.querySelector(`input[value = ${id}]`);
+  var checkbox = nukeForm.querySelector(`[id = ${id}]`);
   var label = checkbox.nextSibling;
   checkbox.checked = true;
   excludeForm.append(checkbox);
@@ -53,9 +82,8 @@ function removeFromCheckList(id) {
   const index = selectedList.indexOf(id);
   if (index > -1) {
     selectedList.splice(index, 1);
-
     chrome.storage.local.set({ selectedList: selectedList });
-    var checkbox = excludeForm.querySelector(`input[value = ${id}]`);
+    var checkbox = excludeForm.querySelector(`[id = ${id}]`);
     var label = checkbox.nextSibling;
     nukeForm.append(checkbox);
     nukeForm.append(label);
@@ -70,41 +98,47 @@ function addCheckbox(key, value, formContent, checked) {
   checkbox.className = "channel-checkbox";
   checkbox.value = value;
   checkbox.checked = checked;
-  checkbox.id = `${key}-${value}`;
-  label.htmlFor = `${key}-${value}`;
+  checkbox.id = `id-${value}`;
+  label.htmlFor = `id-${value}`;
   label.textContent = `${key} @ ${value}`;
   checkbox.addEventListener("change", function (e) {
     if (this.checked) {
-      addToCheckList(this.value);
+      addToCheckList(this.id);
     } else {
-      removeFromCheckList(this.value);
+      removeFromCheckList(this.id);
     }
   });
   formContent.append(checkbox);
   formContent.append(label);
 }
 
-// function addPage() {
-//   const btn = document.createElement("button");
-//   btn.textContent = "Fetch";
-
-//   actionsDivElement.append(btn);
-
-//   btn.addEventListener("click", fetchVals);
-// }
-
+function addPage() {
+  const btn = document.createElement("button");
+  btn.textContent = "Nuke";
+  actionsDivElement.append(btn);
+  btn.addEventListener("click", nukeVals);
+  const btn1 = document.createElement("button");
+  // btn1.textContent = "Fetch";
+  // actionsDivElement.append(btn1);
+  // btn1.addEventListener("click", fetchVals);
+}
 if (document.readyState !== "loading") {
   if (activeTab.url.includes("youtube.com/feed/channels")) {
-    // addPage();
-    // await chrome.storage.local
-    //   .get("selectedList")
-    //   .then((val) => Object.assign(selectedList, val["selectedList"]));
+    addPage();
     fetchVals();
   } else {
     if (!activeTab.url.includes("youtube.com/feed/channels")) {
       const container = document.getElementsByClassName("container")[0];
       container.innerHTML =
         '<div class="title">This is not youtube\'s subscription page.</div>';
+      const redirectButton = document.createElement("button");
+      redirectButton.textContent = "Take me there";
+      container.append(redirectButton);
+      redirectButton.addEventListener("click", () => {
+        chrome.tabs.update(activeTab.id, {
+          url: "https://www.youtube.com/feed/channels",
+        });
+      });
     }
   }
 }
