@@ -17,15 +17,9 @@ async function fetchVals(fresh = false) {
     },
     updateVals
   );
-  await chrome.storage.local
-    .get("selectedList")
-    .then((val) => Object.assign(selectedList, val["selectedList"]));
 }
 
 function nukeVals() {
-  console.log(
-    Object.values(allChannels).filter((n) => !selectedList.includes(n))
-  );
   chrome.tabs.sendMessage(
     activeTab.id,
     {
@@ -40,7 +34,7 @@ function placeCheckboxes(channels) {
   nukeForm.innerHTML = ` <form id="nuke-form">Nuke list</form>`;
   excludeForm.innerHTML = ` <form id="exclude-form">Excluded list</form>`;
   for (let i of Object.keys(channels)) {
-    if (selectedList.includes(channels[i])) {
+    if (selectedList.includes(`id-${channels[i]}`)) {
       addCheckbox(i, channels[i], excludeForm, true);
     } else {
       addCheckbox(i, channels[i], nukeForm, false);
@@ -48,16 +42,21 @@ function placeCheckboxes(channels) {
   }
 }
 
-function reloadPage() {
+function reloadPage(ctr) {
   runAfterDelay(() => {
     console.log(
       (Object.keys(allChannels).length - selectedList.length) * 160 + 10
     );
     chrome.tabs.reload();
-  }, 1500 + ((Object.keys(allChannels).length - selectedList.length) * 160 + 10));
+    //figuring out a way to refresh the popup on reload
+  }, 1500 + ctr * 160 + 10);
 }
 
-function updateVals(channels) {
+async function updateVals(channels) {
+  console.log(channels);
+  await chrome.storage.local
+    .get("selectedList")
+    .then((val) => Object.assign(selectedList, val["selectedList"]));
   if (channels) {
     contentBannerDivElement.innerHTML = `Found ${
       Object.keys(channels).length
@@ -68,9 +67,9 @@ function updateVals(channels) {
   }
 }
 
-function addToCheckList(id) {
+async function addToCheckList(id) {
   selectedList.push(id);
-  chrome.storage.local.set({ selectedList: selectedList });
+  await chrome.storage.local.set({ selectedList: selectedList });
   var checkbox = nukeForm.querySelector(`[id = ${id}]`);
   var label = checkbox.nextSibling;
   checkbox.checked = true;
@@ -78,12 +77,20 @@ function addToCheckList(id) {
   excludeForm.append(label);
 }
 
-function removeFromCheckList(id) {
+function removeAllFromCheckList() {
+  while (selectedList.length > 0) {
+    const id = selectedList[0];
+    removeFromCheckList(id);
+  }
+}
+
+async function removeFromCheckList(id) {
   const index = selectedList.indexOf(id);
   if (index > -1) {
     selectedList.splice(index, 1);
-    chrome.storage.local.set({ selectedList: selectedList });
+    await chrome.storage.local.set({ selectedList: selectedList });
     var checkbox = excludeForm.querySelector(`[id = ${id}]`);
+    checkbox.checked = false;
     var label = checkbox.nextSibling;
     nukeForm.append(checkbox);
     nukeForm.append(label);
@@ -113,15 +120,19 @@ function addCheckbox(key, value, formContent, checked) {
 }
 
 function addPage() {
+  actionsDivElement.innerHTML = "";
   const btn = document.createElement("button");
   btn.textContent = "Nuke";
   actionsDivElement.append(btn);
   btn.addEventListener("click", nukeVals);
   const btn1 = document.createElement("button");
-  // btn1.textContent = "Fetch";
-  // actionsDivElement.append(btn1);
-  // btn1.addEventListener("click", fetchVals);
+  btn1.textContent = "clear excluded";
+  actionsDivElement.append(btn1);
+  btn1.addEventListener("click", async () => {
+    removeAllFromCheckList();
+  });
 }
+
 if (document.readyState !== "loading") {
   if (activeTab.url.includes("youtube.com/feed/channels")) {
     addPage();

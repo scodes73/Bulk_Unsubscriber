@@ -5,10 +5,10 @@ const fetchChannelsFromStorage = async () => {
     .get("channels")
     .then((val) => Object.assign(channelNames, val["channels"]));
 };
-const fetchChannelsToPopUp = (response, fresh = false) => {
+const fetchChannelsToPopUp = async (response, fresh = false) => {
   if (!fresh) fetchChannelsFromStorage();
 
-  if (Object.keys(channelNames).length !== 0) {
+  if (Object.keys(channelNames).length !== 0 && !fresh) {
     response(channelNames);
   } else {
     const channels = Array.from(
@@ -25,7 +25,7 @@ const fetchChannelsToPopUp = (response, fresh = false) => {
         });
       }, {})
     );
-    chrome.storage.local.set({ channels: { ...channelNames } });
+    await chrome.storage.local.set({ channels: { ...channelNames } });
   }
   response(channelNames);
 };
@@ -43,6 +43,7 @@ async function nukeChannels(excludedList, response) {
     (e) => !excludedList.includes(e.getElementsByTagName("a")[0].href.slice(25))
   );
   let ctr = 0;
+  response(channels.length);
   for (const channel of channels) {
     channel.querySelector(`[aria-label^='Unsubscribe from']`).click();
     await runAfterDelay(() => {
@@ -60,7 +61,10 @@ chrome.runtime.onMessage.addListener(async (obj, sender, response) => {
   if (type === "FETCH") {
     fetchChannelsToPopUp(response, obj.fresh);
   } else if (type === "NUKE") {
-    await nukeChannels(obj.vals, response);
+    await nukeChannels(
+      obj.vals.map((str) => str.substring(3)),
+      response
+    );
     response();
   }
 });
